@@ -1,34 +1,36 @@
 /*
- *  Description: This is a light implementation of a Linux shell
- *
- *  Copyright (C) 2016 Jaime Arrocha
- *
- *  This program is free software: you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation, either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+Description: This is a light implementation of a Linux shell
+*/
 
+#include <fcntl.h>
 #include <stdio.h>
-#include <fcntl.h> 
-#include <unistd.h> 
+#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <signal.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include "builtin.h"
+    
+#define MAX_LEN 4096
+static const int MAX_ARGS = 256;
+
+struct proc_st {
+	int bg;
+	int exec;
+	int commc;
+	int fd_out;
+	int fd_in;
+	pid_t pid;
+	char pbuff[MAX_LEN];
+	char *commv[];
+};
 
 /* function prototypes */
+int cmd_exit(struct proc_st *);
+int cmd_cd(struct proc_st *);
+int matches(const char *, const char *);
+void error_msg(const char *);
 void sig_handler(int);
 void comm_identi(struct proc_st *, char *);
 
@@ -59,31 +61,30 @@ int main()
 	/* start of shell loop */
 	printf("[SHELL]> ");
 	for (;;) {
-		while (fgets(buff, MAX_LEN, stdin) != NULL) {
+		fgets(buff, MAX_LEN, stdin);
 
-			/* initialize to zero for every command */
-			memset(proc, 0, sizeof(struct proc_st));
-			proc->exec = 1;
-			comm_identi(proc, buff);
+		/* initialize to zero for every command */
+		memset(proc, 0, sizeof(struct proc_st));
+		proc->exec = 1;
+		comm_identi(proc, buff);
 
-			if (proc->exec == 1) {
-				if ((pid = fork()) < 0 ) {
-					error_msg("fork error");
-				} else if (pid == 0)	/* child */
-					if (execvp(*(proc->commv), 
-						proc->commv) < 0 )
-						error_msg("could not execute");
-
-				/* parent */
+		if (proc->exec == 1) {
+			if ((pid = fork()) < 0 ) {
+				error_msg("fork error");
+			} else if (pid == 0) {	/* child */
+				if (execvp(*(proc->commv), 
+							proc->commv) < 0 )
+					error_msg("could not execute");
+			} else { /* parent */
 				if (proc->bg == 0) {
 					if ((pid = waitpid(pid, &status, 0)) 
-							< 0)
+						< 0)
 						error_msg("waitpid error");
 				} else
 					printf("PID %d %s\n", pid, proc->pbuff);
 			}
-			printf("[SHELL]> ");
 		}
+		printf("[SHELL]> ");
 	}
 	free(proc);
 	exit(0);
@@ -100,6 +101,43 @@ void sig_handler(int signal)
 
 	if (errno != ECHILD)
 		exit(EXIT_FAILURE);
+}
+
+/* prints error messages */
+void error_msg(const char * msg)
+{
+	fprintf(stderr, "%s: %s\n", msg, strerror(errno));
+	exit(EXIT_FAILURE);
+}
+
+/* compares input to builtin commands */
+int matches(const char* cmd, const char* pattern)
+{
+	int len = strlen(cmd);
+
+	if (len > strlen(pattern))
+		return -1;
+	return memcmp(pattern, cmd, len);
+}
+
+/* builtin exit */
+int cmd_exit(struct proc_st *proc)
+{
+	free(proc);
+	exit(EXIT_SUCCESS);
+}
+
+/* builtin cd */
+int cmd_cd(struct proc_st *proc)
+{
+	proc->exec = 0;
+
+	if ((proc->commv[1]) == NULL) {
+		if (chdir(getenv("HOME")) != 0)
+			error_msg("chdir() HOME error");
+	} else if (chdir(proc->commv[1]) != 0)
+		error_msg("chdir() error");
+	return 0;
 }
 
 /* parses and identifies commands */
@@ -137,6 +175,3 @@ void comm_identi(struct proc_st *proc, char *buffer)
 		
 	return;
 }
-
-/* execute commands */
-

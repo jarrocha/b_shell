@@ -4,6 +4,6 @@ GCC = gcc
 CFLAGS = -Wall -g -std=c99
 
 all:
-	$(GCC) $(CFLAGS) -o bas_shell.o mainv0.3.c builtin.c
+	$(GCC) $(CFLAGS) -o bscshell.o mainv0.3.c
 clean:
-	rm -rf *.o
+	rm -rf bscshell.o
