@@ -27,7 +27,6 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include "builtin.h"
-#include "common.h"
 
 /* function prototypes */
 int cmd_exit(struct proc_st *);
@@ -39,7 +38,7 @@ void error_msg(const char *);
 int cmd_exit(struct proc_st *proc) 
 {
 	free(proc);
-	return 0;
+	exit(EXIT_SUCCESS);
 }
 
 /* builtin cd */ 

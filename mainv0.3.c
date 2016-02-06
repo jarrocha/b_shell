@@ -27,7 +27,6 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include "builtin.h"
-#include "common.h"    
 
 /* function prototypes */
 void sig_handler(int);
@@ -138,3 +137,6 @@ void comm_identi(struct proc_st *proc, char *buffer)
 		
 	return;
 }
+
+/* execute commands */
+
