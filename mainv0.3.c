@@ -30,6 +30,7 @@ struct proc_st {
 int cmd_exit(struct proc_st *);
 int cmd_cd(struct proc_st *);
 int matches(const char *, const char *);
+void schk_redirection(struct proc_st *);
 void print_comm(struct proc_st *);
 void error_msg(const char *);
 void sig_handler(int);
@@ -51,6 +52,10 @@ int main()
 	struct proc_st *proc;
 	char buff[MAX_LEN];
 	pid_t pid;
+
+	/* fd redirection */
+	sv_stdout = dup(1);
+	sv_stdin = dup(1);
 	
 	/* initialize signal handlers */
 	struct sigaction sa;
@@ -74,6 +79,8 @@ int main()
 			proc->exec = 0;
 
 		comm_identi(proc, buff);
+		schk_redirection(proc);
+		//print_comm(proc);
 
 		if (proc->exec == 1) {
 			if ((pid = fork()) < 0 ) {
@@ -83,18 +90,15 @@ int main()
 							proc->commv) < 0 )
 					error_msg("could not execute");
 			} else if (pid > 0) { /* parent */
-				printf("Parenting\n");
 				if (proc->bg == 0) {
-					printf("Start waiting\n");
 					if ((pid = waitpid(pid, NULL, 0)) < 0)
 						error_msg("waitpid error");
-					printf("Finished waiting\n");
 				} else {
-					printf("Leaving child alone\n");
 					printf("PID %d %s\n", pid, proc->pbuff);
 				}
 			}
 		}
+		schk_redirection(proc);
 		printf("[SHELL]> ");
 	}
 	free(proc);
@@ -150,7 +154,7 @@ int cmd_cd(struct proc_st *proc)
 		if (chdir(getenv("HOME")) != 0)
 			error_msg("chdir() HOME error");
 	} else if (chdir(proc->commv[1]) != 0)
-		error_msg("chdir() error");
+		fprintf(stderr, "chdir() error");
 	return 0;
 }
 
@@ -160,17 +164,6 @@ void comm_identi(struct proc_st *proc, char *buffer)
 	const struct builtin *ctmp;
 	char *tmp;
 	
-	/*
-	if (strlen(buffer) == 1) {
-		printf("size caught\n");
-		if (strcmp(buffer, "\n\0")) {
-			printf("Newline caught");
-			proc->exec = 0;
-			return;
-		}
-	}
-	*/
-
 	/* replace newline with null */
 	if (buffer[strlen(buffer) - 1] == '\n')
 		buffer[strlen(buffer) - 1] = 0;
@@ -196,12 +189,60 @@ void comm_identi(struct proc_st *proc, char *buffer)
 			proc->bg = 1;
 			proc->commv[(proc->commc) - 1] = NULL;
 			proc->commc--;
-			print_comm(proc);
-			//printf("Buffer after & mod: %s\n", proc->pbuff);
 		}
 	}
 		
 	return;
+}
+
+
+void schk_redirection(struct proc_st *proc)
+{
+	static int sv_stdout = 0;
+
+	if (sv_stdout != 0) {
+		dup2(sv_stdout, 1);
+		return;
+	}
+
+	for (int i = 0; i < proc->commc ; i++) {
+		if (matches(proc->commv[i], ">") == 0) {
+			if ((proc->fd_out = creat(proc->commv[i+1], 
+						S_IRWXU)) < 0 ) {
+				fprintf(stderr, "Error opening file");
+				return;
+			}
+			
+			sv_stdout = dup(1);
+			proc->commc -= 2;
+			proc->commv[i] = NULL;
+
+			if (dup2(proc->fd_out, STDOUT_FILENO) < 0) {
+				fprintf(stderr, "Output redirection error");
+				return;
+			}
+			close(proc->fd_out);
+		} else if (matches(proc->commv[i], ">>") == 0) {
+			printf("Apped redirection caught\n");
+			if ((proc->fd_out = open(proc->commv[i+1], 
+						O_APPEND | O_WRONLY,	
+						S_IRWXU)) < 0 ) {
+				fprintf(stderr, "Error opening file");
+				return;
+			}
+			
+			sv_stdout = dup(1);
+			proc->commc -= 2;
+			proc->commv[i] = NULL;
+
+			if (dup2(proc->fd_out, STDOUT_FILENO) < 0) {
+				fprintf(stderr, "Output redirection error");
+				return;
+			}
+			close(proc->fd_out);
+		}
+	}
+
 }
 
 void print_comm(struct proc_st *proc)
@@ -209,9 +250,7 @@ void print_comm(struct proc_st *proc)
 	printf("Commc: %d\n", proc->commc);
 	printf("Coomv: ");
 	for (int i = 0; i < proc->commc ; i++)
-	{
 		printf(" %s", proc->commv[i]);
-	}
 	printf("\n");
 
 }
