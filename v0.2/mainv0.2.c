@@ -63,6 +63,8 @@ int main()
 	for (;;) {
 		while (fgets(buff, MAX_LEN, stdin) != NULL) {
 
+			if (strlen(buff) == 1)
+				continue;
 			/* initialize to zero for every command */
 			memset(proc, 0, sizeof(struct proc_st));
 			proc->exec = 1;

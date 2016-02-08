@@ -2,15 +2,15 @@
 Description: This is a light implementation of a Linux shell
 */
 
-#include <fcntl.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <fcntl.h>
 #include <string.h>
 #include <errno.h>
-#include <signal.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <signal.h>
     
 #define MAX_LEN 4096
 static const int MAX_ARGS = 256;
@@ -30,6 +30,7 @@ struct proc_st {
 int cmd_exit(struct proc_st *);
 int cmd_cd(struct proc_st *);
 int matches(const char *, const char *);
+void print_comm(struct proc_st *);
 void error_msg(const char *);
 void sig_handler(int);
 void comm_identi(struct proc_st *, char *);
@@ -50,12 +51,15 @@ int main()
 	struct proc_st *proc;
 	char buff[MAX_LEN];
 	pid_t pid;
-	int status;
 	
 	/* initialize signal handlers */
+	struct sigaction sa;
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
+	sa.sa_handler = sig_handler;
+	sigaction(SIGCHLD, &sa, NULL);
 	signal(SIGINT, SIG_IGN);
-	signal(SIGCHLD, sig_handler);
-	
+
 	proc = malloc(sizeof(struct proc_st) + MAX_ARGS);
 	
 	/* start of shell loop */
@@ -66,6 +70,9 @@ int main()
 		/* initialize to zero for every command */
 		memset(proc, 0, sizeof(struct proc_st));
 		proc->exec = 1;
+		if (strlen(buff) == 1)
+			proc->exec = 0;
+
 		comm_identi(proc, buff);
 
 		if (proc->exec == 1) {
@@ -75,13 +82,17 @@ int main()
 				if (execvp(*(proc->commv), 
 							proc->commv) < 0 )
 					error_msg("could not execute");
-			} else { /* parent */
+			} else if (pid > 0) { /* parent */
+				printf("Parenting\n");
 				if (proc->bg == 0) {
-					if ((pid = waitpid(pid, &status, 0)) 
-						< 0)
+					printf("Start waiting\n");
+					if ((pid = waitpid(pid, NULL, 0)) < 0)
 						error_msg("waitpid error");
-				} else
+					printf("Finished waiting\n");
+				} else {
+					printf("Leaving child alone\n");
 					printf("PID %d %s\n", pid, proc->pbuff);
+				}
 			}
 		}
 		printf("[SHELL]> ");
@@ -93,6 +104,7 @@ int main()
 /* signal handler */
 void sig_handler(int signal)
 {
+	int sverrno = errno;
 	pid_t pid;
 	const char msg[] = "Child Terminated";
 
@@ -101,6 +113,8 @@ void sig_handler(int signal)
 
 	if (errno != ECHILD)
 		exit(EXIT_FAILURE);
+
+	errno = sverrno;
 }
 
 /* prints error messages */
@@ -146,6 +160,17 @@ void comm_identi(struct proc_st *proc, char *buffer)
 	const struct builtin *ctmp;
 	char *tmp;
 	
+	/*
+	if (strlen(buffer) == 1) {
+		printf("size caught\n");
+		if (strcmp(buffer, "\n\0")) {
+			printf("Newline caught");
+			proc->exec = 0;
+			return;
+		}
+	}
+	*/
+
 	/* replace newline with null */
 	if (buffer[strlen(buffer) - 1] == '\n')
 		buffer[strlen(buffer) - 1] = 0;
@@ -170,8 +195,23 @@ void comm_identi(struct proc_st *proc, char *buffer)
 		if (*proc->commv[(proc->commc) - 1] == '&') {
 			proc->bg = 1;
 			proc->commv[(proc->commc) - 1] = NULL;
+			proc->commc--;
+			print_comm(proc);
+			//printf("Buffer after & mod: %s\n", proc->pbuff);
 		}
 	}
 		
 	return;
+}
+
+void print_comm(struct proc_st *proc)
+{
+	printf("Commc: %d\n", proc->commc);
+	printf("Coomv: ");
+	for (int i = 0; i < proc->commc ; i++)
+	{
+		printf(" %s", proc->commv[i]);
+	}
+	printf("\n");
+
 }
