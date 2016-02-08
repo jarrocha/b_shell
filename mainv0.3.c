@@ -63,7 +63,7 @@ int main()
 
 	/* save fd redirection reset */
 	sc.sv_stdout = dup(1);
-	sc.sv_stdin = dup(1);
+	sc.sv_stdin = dup(0);
 	
 	/* initialize signal handlers */
 	struct sigaction sa;
