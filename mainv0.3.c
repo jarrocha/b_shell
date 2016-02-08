@@ -26,11 +26,18 @@ struct proc_st {
 	char *commv[];
 };
 
+struct sh_ctrl {
+	int redir;
+	int sv_stdin;
+	int sv_stdout;
+};
+
 /* function prototypes */
 int cmd_exit(struct proc_st *);
 int cmd_cd(struct proc_st *);
 int matches(const char *, const char *);
-void schk_redirection(struct proc_st *);
+void schk_redir(struct proc_st *, struct sh_ctrl *);
+void rst_redir(struct sh_ctrl *);
 void print_comm(struct proc_st *);
 void error_msg(const char *);
 void sig_handler(int);
@@ -50,12 +57,13 @@ static const struct builtin {
 int main()
 {
 	struct proc_st *proc;
+	struct sh_ctrl sc;
 	char buff[MAX_LEN];
 	pid_t pid;
 
-	/* fd redirection */
-	sv_stdout = dup(1);
-	sv_stdin = dup(1);
+	/* save fd redirection reset */
+	sc.sv_stdout = dup(1);
+	sc.sv_stdin = dup(1);
 	
 	/* initialize signal handlers */
 	struct sigaction sa;
@@ -79,8 +87,7 @@ int main()
 			proc->exec = 0;
 
 		comm_identi(proc, buff);
-		schk_redirection(proc);
-		//print_comm(proc);
+		schk_redir(proc, &sc);
 
 		if (proc->exec == 1) {
 			if ((pid = fork()) < 0 ) {
@@ -98,7 +105,7 @@ int main()
 				}
 			}
 		}
-		schk_redirection(proc);
+		rst_redir(&sc);
 		printf("[SHELL]> ");
 	}
 	free(proc);
@@ -196,14 +203,26 @@ void comm_identi(struct proc_st *proc, char *buffer)
 }
 
 
-void schk_redirection(struct proc_st *proc)
+void rst_redir(struct sh_ctrl *sc)
 {
-	static int sv_stdout = 0;
+	if (sc->redir == 1) {
+		if (dup2(sc->sv_stdout, STDOUT_FILENO) < 0) {
+			fprintf(stderr, "Output redirection reset error");
+			return;
+		}
 
-	if (sv_stdout != 0) {
-		dup2(sv_stdout, 1);
-		return;
+		if (dup2(sc->sv_stdin, STDIN_FILENO) < 0) {
+			fprintf(stderr, "Output redirection reset error");
+			return;
+		}
 	}
+	else
+		return;
+}
+
+
+void schk_redir(struct proc_st *proc, struct sh_ctrl *sc)
+{
 
 	for (int i = 0; i < proc->commc ; i++) {
 		if (matches(proc->commv[i], ">") == 0) {
@@ -213,7 +232,7 @@ void schk_redirection(struct proc_st *proc)
 				return;
 			}
 			
-			sv_stdout = dup(1);
+			sc->redir = 1;
 			proc->commc -= 2;
 			proc->commv[i] = NULL;
 
@@ -223,7 +242,6 @@ void schk_redirection(struct proc_st *proc)
 			}
 			close(proc->fd_out);
 		} else if (matches(proc->commv[i], ">>") == 0) {
-			printf("Apped redirection caught\n");
 			if ((proc->fd_out = open(proc->commv[i+1], 
 						O_APPEND | O_WRONLY,	
 						S_IRWXU)) < 0 ) {
@@ -231,7 +249,7 @@ void schk_redirection(struct proc_st *proc)
 				return;
 			}
 			
-			sv_stdout = dup(1);
+			sc->redir = 1;
 			proc->commc -= 2;
 			proc->commv[i] = NULL;
 
@@ -240,6 +258,22 @@ void schk_redirection(struct proc_st *proc)
 				return;
 			}
 			close(proc->fd_out);
+		} else if (matches(proc->commv[i], "<") == 0) {
+			if ((proc->fd_in = open(proc->commv[i+1], O_RDONLY,	
+						S_IRUSR)) < 0 ) {
+				fprintf(stderr, "Error opening file");
+				return;
+			}
+			
+			sc->redir = 1;
+			proc->commc -= 2;
+			proc->commv[i] = NULL;
+
+			if (dup2(proc->fd_in, STDIN_FILENO) < 0) {
+				fprintf(stderr, "Input redirection error");
+				return;
+			}
+			close(proc->fd_in);
 		}
 	}
 
