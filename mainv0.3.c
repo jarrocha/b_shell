@@ -72,6 +72,8 @@ int main()
 	sa.sa_handler = sig_handler;
 	sigaction(SIGCHLD, &sa, NULL);
 	signal(SIGINT, SIG_IGN);
+	signal(SIGQUIT, SIG_IGN);
+	signal(SIGSTOP, SIG_IGN);
 
 	proc = malloc(sizeof(struct proc_st) + MAX_ARGS);
 	

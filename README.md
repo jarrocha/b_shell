@@ -12,5 +12,6 @@ TODO
 -----
 Implement:
 - pipes !!
-- job control, will require implementation of a regular linked list.
-
+- job control
+- error redirection
+- command history
